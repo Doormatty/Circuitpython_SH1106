@@ -137,11 +137,9 @@ class SH1106_I2C(_SH1106):
         self.i2c_bus = i2c
         self.addr = addr
         self.temp = bytearray(2)
-        # Add an extra byte to the data buffer to hold an I2C data/command byte
-        # to use hardware-compatible I2C transactions.  A memoryview of the
-        # buffer is used to mask this byte from the framebuffer operations
-        # (without a major memory hit as memoryview doesn't copy to a separate
-        # buffer).
+        # Add an extra byte to the data buffer to hold an I2C data/command byte to use hardware-compatible I2C
+        # transactions.  A memoryview of the buffer is used to mask this byte from the framebuffer operations
+        # (without a major memory hit as memoryview doesn't copy to a separate buffer).
         self.buffer = bytearray(((height // 8) * width) + 1)
         self.buffer[0] = 0x40  # Set first byte of data buffer to Co=0, D/C=1
         framebuffer = adafruit_framebuf.FrameBuffer1(memoryview(self.buffer)[1:], width, height)
@@ -154,15 +152,19 @@ class SH1106_I2C(_SH1106):
         self.i2c_bus.try_lock()
         self.i2c_bus.writeto(self.addr, self.temp)
 
+    def write_cmd_nolock(self, cmd):
+        """Copy of write_cmd that doesn't bother to check the lock"""
+        self.temp[0] = 0x00  # Co = 0, D/C = 0
+        self.temp[1] = cmd
+        self.i2c_bus.writeto(self.addr, self.temp)
+
     def write_framebuf(self):
         """write to the frame buffer via I2C"""
-
         self.i2c_bus.try_lock()
         write = self.i2c_bus.writeto
-        write_cmd = self.write_cmd
+        write_cmd = self.write_cmd_nolock
         tmp_buf = bytearray(1)
         tmp_buf[0] = 0x40  # Co = 0, D/C = 1
-
         local_buffer = bytearray(self.width + 1)
 
         for page in range(0, 8):  # Pages
@@ -170,12 +172,9 @@ class SH1106_I2C(_SH1106):
             write_cmd(0xB0 + page)  # set page address
             write_cmd(0x02)  # set lower column address
             write_cmd(0x10)  # set higher column address
-
             # Not sure if there is a way to do this without a local buffer
             # as we need to peprend a databyte onto the framebuffer data being sent.
             local_buffer = self.buffer[page_mult:page_mult + self.width + 2]
             local_buffer[:0] = tmp_buf  # prepend Co = 0, D/C = 1
-
             write(self.addr, local_buffer)
-
         self.i2c_bus.unlock()
